@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<flow name="db_etlFlow" doc:id="03be6ec9-ad4c-4662-a896-a5cb31999cfb" >
+		<scheduler doc:name="Scheduler" doc:id="fdc29435-0329-40d0-985b-c02a76cb60f1" >
+			<scheduling-strategy >
+				<fixed-frequency timeUnit="MINUTES" frequency="1"/>
+			</scheduling-strategy>
+		</scheduler>
+		<os:retrieve doc:name="Retrieve" doc:id="b916e86e-d159-4074-ab07-51f31c946c42" key="ID" target="ID">
+			<os:default-value ><![CDATA[0]]></os:default-value>
+		</os:retrieve>
+		<logger level="INFO" doc:name="Logger" doc:id="1b655b2d-61f0-4f67-93fb-f3cfa7d3de7c" message='#["last id":vars.ID]'/>
+		<db:select doc:name="Select" doc:id="48d7f68f-88a6-4dcd-90e7-d212303ce665" config-ref="Database_Config_Source">
+			<db:sql ><![CDATA[Select * from customers where ID > :ID]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	"ID":vars.ID
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice" doc:id="392be553-83eb-4c7a-baa8-af8cb69e0b67" >
+			<when expression="#[not isEmpty(payload)]">
+				<os:store doc:name="Store" doc:id="4498d04f-dcaf-433d-a462-245332639c5b" key="ID">
+					<os:value ><![CDATA[#[max(payload map $.ID)]]]></os:value>
+				</os:store>
+				<foreach doc:name="For Each" doc:id="dc18319b-a0e2-43a9-a95c-20f4f5f61e50">
+					<db:insert doc:name="Insert" doc:id="214a25d5-ed81-4894-990d-dc869e91b917" config-ref="Database_Config_Source">
+			<db:sql><![CDATA[insert into dest (ID,NAME) VALUES (:ID , :NAME)]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	ID:payload.ID,
+	NAME:payload.NAME
+}]]]></db:input-parameters>
+		</db:insert>
+			<logger level="INFO" doc:name="Logger" doc:id="959d89fd-3640-4732-9736-12ca44375ba5" message='#[{&#10;	"affectedrows":payload.affectedRows&#10;}]' />
+		</foreach>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="9ff5aa16-1ce5-400b-8b21-a0f1a3f64cb4" message="no new records"/>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>

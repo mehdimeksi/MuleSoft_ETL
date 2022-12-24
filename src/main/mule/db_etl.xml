@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:db="http://www.mulesoft.org/schema/mule/db"
-	xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+<mule xmlns:sockets="http://www.mulesoft.org/schema/mule/sockets" xmlns:s3="http://www.mulesoft.org/schema/mule/s3"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
-http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
-	<flow name="db_etlFlow" doc:id="03be6ec9-ad4c-4662-a896-a5cb31999cfb" >
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+http://www.mulesoft.org/schema/mule/sockets http://www.mulesoft.org/schema/mule/sockets/current/mule-sockets.xsd">
+	<file:config name="File_Config" doc:name="File Config" doc:id="8e50ae3b-7e6f-4cae-9a30-45cf8a33150e" >
+		<file:connection workingDir="C:\Users\mehdi.meksi\OneDrive - Keyrus\Bureau\Mehdi notes" />
+	</file:config>
+<os:object-store name="Object_store" doc:name="Object store" doc:id="14063eb4-ff09-49e9-a31e-62c06ea521ef" />
+<!-- [STUDIO:"db_etlFlow"]		<flow name="db_etlFlow" doc:id="03be6ec9-ad4c-4662-a896-a5cb31999cfb" >
 		<scheduler doc:name="Scheduler" doc:id="fdc29435-0329-40d0-985b-c02a76cb60f1" >
 			<scheduling-strategy >
 				<fixed-frequency timeUnit="MINUTES" frequency="1"/>
@@ -39,6 +47,43 @@ http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/cu
 			</when>
 			<otherwise >
 				<logger level="INFO" doc:name="Logger" doc:id="9ff5aa16-1ce5-400b-8b21-a0f1a3f64cb4" message="no new records"/>
+			</otherwise>
+		</choice>
+	</flow> [STUDIO] -->
+	<flow name="db_etl_file" doc:id="c974d21c-a018-46cd-a230-f58249a3e667" >
+		<scheduler doc:name="Scheduler" doc:id="63270673-b8a6-4b32-aa97-943414067a02" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="1" timeUnit="MINUTES" />
+			</scheduling-strategy>
+		</scheduler>
+		<os:retrieve doc:name="Retrieve" doc:id="54b12ca0-a0a1-43ca-92d1-f6239e90edbe" key="ID" target="ID" objectStore="Object_store">
+			<os:default-value ><![CDATA[0]]></os:default-value>
+		</os:retrieve>
+		<logger level="INFO" doc:name="Logger" doc:id="d31a1d28-6640-439b-b822-0ce134b82230" message='#["last id":vars.ID]' />
+		<db:select doc:name="Select" doc:id="48bd6b68-afab-4584-bf3d-80c70e6520bb" config-ref="Database_Config_Source" >
+			<db:sql ><![CDATA[Select * from customers where ID > :ID]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	"ID":vars.ID
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice" doc:id="e7c24be1-705a-438b-bf9b-7fdfc863fafe" >
+			<when expression="#[not isEmpty(payload)]" >
+				<os:store doc:name="Store" doc:id="4e0a96f9-723d-4749-8bee-15cc1c0b4aa8" key="ID" objectStore="Object_store">
+					<os:value ><![CDATA[#[max(payload map $.ID)]]]></os:value>
+				</os:store>
+				<ee:transform doc:name="Transform Message" doc:id="5b08d49f-388a-4d1d-8f91-778fcf35424d">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/csv header=true
+---
+payload]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<file:write doc:name="Write" doc:id="4f5d071e-d452-49c8-aacc-1858189689c9" config-ref="File_Config" path="#['account' ++ (now() as String {format:'yyyy-MM-dd-hh-mm-ss'}) ++ '.csv']" mode="APPEND"/>
+			
+</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="25cee0d5-65f8-4378-80e9-93edce698856" message="no new records" />
 			</otherwise>
 		</choice>
 	</flow>
